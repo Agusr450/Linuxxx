@@ -38,8 +38,8 @@ jobs:
             -B 5 -A 10 --color=always || echo "✅ Tidak ditemukan error tipikal di bagian log yang diambil."
           echo ""
 
-          # 2. Ambil 100 baris TERAKHIR (Untuk memastikan di mana build berhenti)
-          echo "🔎 100 BARIS TERAKHIR LOG (Akhir proses):"
+          # 2. Ambil 500 baris TERAKHIR (Untuk memastikan di mana build berhenti)
+          echo "🔎 500 BARIS TERAKHIR LOG (Akhir proses):"
           echo "------------------------------------------------"
           gh run view $RUN_ID --log-failed --repo ${{ github.repository }} | tail -n 100
           echo ""
