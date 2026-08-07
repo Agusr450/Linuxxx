@@ -4,11 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: 'ID dari workflow run yang gagal'
-        required: true
+        description: 'ID dari workflow run yang gagal (kosongkan untuk otomatis cari yang terakhir)'
+        required: false
+        default: ''
       tail_lines:
         description: 'Jumlah baris log dari akhir yang ingin diambil'
+        required: false
         default: '100'
+      include_success:
+        description: 'Include logs from successful steps too?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
   get-logs:
@@ -16,10 +26,90 @@ jobs:
     permissions:
       actions: read
       contents: read
+
     steps:
-      - name: Download and filter logs
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔍 Get latest failed run ID
+        id: get_run
         run: |
-          echo "Mengambil 100 log terakhir dari run ID: ${{ github.event.inputs.run_id }}"
-          gh run view ${{ github.event.inputs.run_id }} --log-failed | tail -n ${{ github.event.inputs.tail_lines }}
+          if [ -z "${{ github.event.inputs.run_id }}" ]; then
+            echo "🔍 Mencari workflow run terakhir yang gagal..."
+            RUN_ID=$(gh run list \
+              --limit 1 \
+              --status failure \
+              --repo ${{ github.repository }} \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            
+            if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+              echo "❌ Tidak ada workflow run yang gagal ditemukan!"
+              exit 1
+            fi
+            
+            echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+            echo "✅ Ditemukan run ID: $RUN_ID"
+          else
+            echo "run_id=${{ github.event.inputs.run_id }}" >> $GITHUB_OUTPUT
+            echo "✅ Menggunakan run ID: ${{ github.event.inputs.run_id }}"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 Get run details
+        id: run_details
+        run: |
+          RUN_ID="${{ steps.get_run.outputs.run_id }}"
+          
+          # Get run details
+          gh run view $RUN_ID --repo ${{ github.repository }} --json 'headBranch,status,conclusion,createdAt,displayTitle'
+          
+          echo ""
+          echo "📋 Run ID: $RUN_ID"
+          echo "🔗 URL: https://github.com/${{ github.repository }}/actions/runs/$RUN_ID"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📥 Download and filter logs
+        run: |
+          RUN_ID="${{ steps.get_run.outputs.run_id }}"
+          TAIL_LINES="${{ github.event.inputs.tail_lines }}"
+          INCLUDE_SUCCESS="${{ github.event.inputs.include_success }}"
+          
+          echo "📋 Mengambil log dari run ID: $RUN_ID"
+          echo "📄 Mengambil $TAIL_LINES baris terakhir"
+          echo ""
+          echo "═══════════════════════════════════════════════════════════"
+          echo "📜 LOGS (terakhir $TAIL_LINES baris):"
+          echo "═══════════════════════════════════════════════════════════"
+          echo ""
+          
+          if [ "$INCLUDE_SUCCESS" = "true" ]; then
+            # Get all logs (including successful steps)
+            gh run view $RUN_ID \
+              --log \
+              --repo ${{ github.repository }} \
+              | tail -n $TAIL_LINES
+          else
+            # Get only failed logs
+            gh run view $RUN_ID \
+              --log-failed \
+              --repo ${{ github.repository }} \
+              | tail -n $TAIL_LINES
+          fi
+          
+          echo ""
+          echo "═══════════════════════════════════════════════════════════"
+          echo "✅ Selesai!"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📤 Upload log as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-logs-run-${{ steps.get_run.outputs.run_id }}
+          path: |
+            /tmp/*.log
+          retention-days: 7
