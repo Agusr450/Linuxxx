@@ -28,7 +28,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 360
     permissions:
       contents: write
       packages: write
@@ -67,6 +67,21 @@ jobs:
         sudo ln -sf /usr/bin/python3 /usr/bin/python
         echo "✅ Build environment ready!"
 
+    - name: 💾 Add swap space
+      run: |
+        echo "📊 Memory sebelum swap:"
+        free -h
+        echo ""
+        echo "📦 Creating 4GB swap file..."
+        sudo fallocate -l 4G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        echo ""
+        echo "📊 Memory setelah swap:"
+        free -h
+        echo "✅ Swap added successfully!"
+
     - name: 🧹 Clean workspace
       run: |
         sudo rm -rf /tmp/*
@@ -90,9 +105,9 @@ jobs:
           immortalwrt/build_dir
           immortalwrt/staging_dir
           immortalwrt/tmp
-        key: ${{ runner.os }}-immortalwrt-minimal-${{ github.sha }}
+        key: ${{ runner.os }}-immortalwrt-ultra-minimal-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-immortalwrt-minimal-
+          ${{ runner.os }}-immortalwrt-ultra-minimal-
 
     - name: 📄 Generate Device Tree files
       run: |
@@ -254,14 +269,14 @@ jobs:
       run: |
         cd immortalwrt
         echo "🚀 Building ULTRA MINIMAL firmware..."
-        make -j$(nproc) V=s || make -j1 V=s
+        make -j4 V=s || make -j1 V=s
         echo "✅ Build completed!"
 
     - name: 📤 Upload firmware
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: immortalwrt-j5-minimal-${{ github.run_number }}
+        name: immortalwrt-j5-ultra-minimal-${{ github.run_number }}
         path: |
           immortalwrt/bin/targets/msm89xx/msm8916/*.img
           immortalwrt/bin/targets/msm89xx/msm8916/*.bin
@@ -274,7 +289,7 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: build-logs-minimal-${{ github.run_number }}
+        name: build-logs-ultra-minimal-${{ github.run_number }}
         path: |
           immortalwrt/logs/
           immortalwrt/.config
@@ -284,7 +299,7 @@ jobs:
       if: success()
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: j5-minimal-${{ github.run_number }}
+        tag_name: j5-ultra-minimal-${{ github.run_number }}
         name: 📦 ImmortalWrt J5 - ULTRA MINIMAL #${{ github.run_number }}
         body: |
           📱 ImmortalWrt for Samsung J5 - ULTRA MINIMAL
