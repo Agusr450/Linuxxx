@@ -1,0 +1,25 @@
+name: Get Failed Job Logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID dari workflow run yang gagal'
+        required: true
+      tail_lines:
+        description: 'Jumlah baris log dari akhir yang ingin diambil'
+        default: '100'
+
+jobs:
+  get-logs:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Download and filter logs
+        run: |
+          echo "Mengambil 100 log terakhir dari run ID: ${{ github.event.inputs.run_id }}"
+          gh run view ${{ github.event.inputs.run_id }} --log-failed | tail -n ${{ github.event.inputs.tail_lines }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
