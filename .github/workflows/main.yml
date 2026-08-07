@@ -45,6 +45,15 @@ on:
           - full
           - minimal
           - custom
+      immortalwrt_branch:
+        description: '🌿 ImmortalWrt Branch'
+        required: true
+        default: 'openwrt-23.05'
+        type: choice
+        options:
+          - openwrt-23.05
+          - openwrt-24.10
+          - master
 
 jobs:
   build:
@@ -57,7 +66,7 @@ jobs:
 
     steps:
     # ============================================
-    # STEP 1: Setup Environment (FIXED)
+    # STEP 1: Setup Environment
     # ============================================
     - name: ⚙️ Setup Build Environment
       run: |
@@ -105,9 +114,6 @@ jobs:
         # Upgrade pip
         pip3 install --upgrade pip setuptools wheel
         
-        # Check versions
-        python3 --version
-        gcc --version
         echo "✅ Build environment ready!"
 
     - name: 🧹 Clean workspace
@@ -120,15 +126,22 @@ jobs:
       uses: actions/checkout@v4
 
     # ============================================
-    # STEP 2: Clone ImmortalWrt
+    # STEP 2: Clone ImmortalWrt (FIXED)
     # ============================================
     - name: 📦 Clone ImmortalWrt source
       run: |
-        git clone -b main --single-branch --depth=1 https://github.com/immortalwrt/immortalwrt.git
+        cd $GITHUB_WORKSPACE
+        BRANCH="${{ github.event.inputs.immortalwrt_branch }}"
+        
+        echo "🌿 Cloning branch: $BRANCH"
+        
+        git clone -b "$BRANCH" --single-branch --depth=1 \
+          https://github.com/immortalwrt/immortalwrt.git
+        
         cd immortalwrt
-        git describe --tags --always > version.txt
-        echo "IMMORTALWRT_VERSION=$(cat version.txt)" >> $GITHUB_ENV
-        echo "Source cloned successfully!"
+        echo "✅ Cloned branch: $(git branch --show-current)"
+        git log -1 --oneline
+        echo "IMMORTALWRT_BRANCH=$(git branch --show-current)" >> $GITHUB_ENV
 
     # ============================================
     # STEP 3: Auto-generate DTS files
@@ -458,6 +471,7 @@ jobs:
           | **Build Type** | ${{ github.event.inputs.build_type }} |
           | **WiFi SSID** | `${{ github.event.inputs.wifi_ssid }}` |
           | **APN** | `${{ github.event.inputs.apn }}` |
+          | **Branch** | `${{ github.event.inputs.immortalwrt_branch }}` |
           
           ### 📦 Included Packages
           ```
