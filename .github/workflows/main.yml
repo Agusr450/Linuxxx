@@ -57,16 +57,58 @@ jobs:
 
     steps:
     # ============================================
-    # STEP 1: Setup Environment
+    # STEP 1: Setup Environment (FIXED)
     # ============================================
     - name: ⚙️ Setup Build Environment
       run: |
         sudo apt-get update -y
         sudo apt-get install -y \
-          build-essential clang flex bison g++ gawk gcc-multilib \
-          g++-multilib gettext git libncurses-dev libssl-dev \
-          python3-distutils rsync unzip zlib1g-dev file wget \
-          time qemu-utils qemu-system-arm cpio xxd
+          build-essential \
+          clang \
+          flex \
+          bison \
+          g++ \
+          gawk \
+          gcc-multilib \
+          g++-multilib \
+          gettext \
+          git \
+          libncurses-dev \
+          libssl-dev \
+          python3 \
+          python3-dev \
+          python3-pip \
+          rsync \
+          unzip \
+          zlib1g-dev \
+          file \
+          wget \
+          time \
+          qemu-utils \
+          qemu-system-arm \
+          cpio \
+          xxd \
+          bc \
+          lzma \
+          lzop \
+          perl \
+          libelf-dev \
+          linux-headers-generic \
+          nodejs \
+          npm
+        
+        # Fix python3-distutils issue
+        sudo apt-get install -y python3-distutils || true
+        sudo apt-get install -y python3-venv || true
+        sudo ln -sf /usr/bin/python3 /usr/bin/python
+        
+        # Upgrade pip
+        pip3 install --upgrade pip setuptools wheel
+        
+        # Check versions
+        python3 --version
+        gcc --version
+        echo "✅ Build environment ready!"
 
     - name: 🧹 Clean workspace
       run: |
@@ -95,34 +137,24 @@ jobs:
       run: |
         cd immortalwrt
         
-        # Create directory structure
         KERNEL_DIR="target/linux/msm89xx/files-${{ github.event.inputs.kernel_version }}"
         mkdir -p $KERNEL_DIR/arch/arm64/boot/dts/qcom
         
-        # Download DTS from mainline kernel
         echo "📥 Downloading DTS files from mainline kernel..."
         
-        # J5 common DTSI
         curl -s -o $KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi \
           https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
         
-        # J5 specific DTS
         curl -s -o $KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts \
           https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5.dts
         
-        # J5NLTE DTS (2016 version)
         curl -s -o $KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5nlte.dts \
-          https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5nlte.dts || echo "J5NLTE DTS not found in mainline"
+          https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5nlte.dts || echo "J5NLTE DTS not found"
         
-        # J5LTE DTS
-        curl -s -o $KERNEL_DIR/arch/arm64/boot/dts/qcom/msm8916-samsung-j5lte.dts \
-          https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5lte.dts || echo "J5LTE DTS not found in mainline"
-        
-        echo "✅ DTS files downloaded successfully!"
-        ls -la $KERNEL_DIR/arch/arm64/boot/dts/qcom/
+        echo "✅ DTS files downloaded!"
 
     # ============================================
-    # STEP 4: Auto-generate configuration files
+    # STEP 4: Generate configuration files
     # ============================================
     - name: ⚙️ Generate configuration files
       run: |
@@ -130,29 +162,19 @@ jobs:
         
         KERNEL_DIR="target/linux/msm89xx/files-${{ github.event.inputs.kernel_version }}"
         mkdir -p $KERNEL_DIR/etc/uci-defaults
-        mkdir -p $KERNEL_DIR/etc/init.d
+        mkdir -p $KERNEL_DIR/etc/config
         
-        # ==========================================
-        # File 1: WiFi auto-enable (uci-defaults)
-        # ==========================================
+        # WiFi auto-enable
         cat > $KERNEL_DIR/etc/uci-defaults/99-wifi-auto << 'EOF'
         #!/bin/sh
-        # Auto-enable WiFi with custom SSID/password
-        
         sleep 3
-        
-        # Get credentials from environment or use defaults
         SSID="${WIFI_SSID:-ImmortalWrt-J5}"
         PASSWORD="${WIFI_PASSWORD:-changeme123}"
         
-        # Check if wireless config exists
         if [ -f /etc/config/wireless ]; then
-          # Enable all radio devices
           for radio in $(uci show wireless | grep "=wifi-device" | cut -d'=' -f1); do
             uci set $radio.disabled='0'
           done
-          
-          # Configure first AP interface
           iface="wireless.@wifi-iface[0]"
           if uci get $iface >/dev/null 2>&1; then
             uci set $iface.ssid="$SSID"
@@ -161,96 +183,48 @@ jobs:
             uci set $iface.network='lan'
             uci set $iface.mode='ap'
           fi
-          
           uci commit wireless
           /etc/init.d/network restart
           /etc/init.d/wireless restart
-          
           echo "✅ WiFi configured: SSID=$SSID"
-        else
-          echo "⚠️ No wireless config found, skipping..."
         fi
         EOF
         
-        # ==========================================
-        # File 2: Modem auto-setup (uci-defaults)
-        # ==========================================
+        # Modem auto-setup
         cat > $KERNEL_DIR/etc/uci-defaults/99-modem-auto << 'EOF'
         #!/bin/sh
-        # Auto-setup 4G modem
-        
         APN="${APN:-internet}"
-        
-        # Enable ModemManager
         uci set modemmanager.@modemmanager[0].enable='1' 2>/dev/null || true
-        
-        # Setup QMI interface
         uci set network.wan=interface
         uci set network.wan.proto='qmi'
         uci set network.wan.device='/dev/cdc-wdm0'
         uci set network.wan.apn="$APN"
         uci set network.wan.auth='none'
-        uci set network.wan.iptype='ipv4'
-        
         uci commit modemmanager
         uci commit network
-        
         /etc/init.d/modemmanager enable
         /etc/init.d/modemmanager restart
         /etc/init.d/network restart
-        
         echo "✅ Modem configured with APN: $APN"
         EOF
         
-        # ==========================================
-        # File 3: WiFi schedule setup
-        # ==========================================
-        cat > $KERNEL_DIR/etc/uci-defaults/99-wifi-schedule << 'EOF'
-        #!/bin/sh
-        # Enable WiFi schedule with default settings
-        
-        uci set wifi_schedule.global.enabled='1'
-        uci set wifi_schedule.global.start='06:00'
-        uci set wifi_schedule.global.stop='23:59'
-        uci commit wifi_schedule
-        /etc/init.d/wifi_schedule enable
-        /etc/init.d/wifi_schedule start
-        
-        echo "✅ WiFi schedule enabled (06:00-23:59)"
-        EOF
-        
-        # ==========================================
-        # File 4: rc.local (fallback)
-        # ==========================================
+        # rc.local
         cat > $KERNEL_DIR/etc/rc.local << 'EOF'
         #!/bin/sh -e
-        # rc.local - fallback for WiFi and modem
-        
         sleep 15
-        
-        # Force WiFi up if not running
         if ! pgrep hostapd >/dev/null; then
-          echo "🔄 WiFi not running, restarting..."
           /etc/init.d/wireless restart
-          sleep 3
         fi
-        
-        # Force modem detection
         if [ ! -e /dev/cdc-wdm0 ]; then
-          echo "🔄 Modem not detected, resetting USB..."
           echo 1 > /sys/bus/usb/devices/1-1/remove 2>/dev/null || true
           sleep 2
           echo 1 > /sys/bus/usb/devices/1-1/rescan 2>/dev/null || true
-          sleep 5
           /etc/init.d/modemmanager restart
         fi
-        
         exit 0
         EOF
         
-        # ==========================================
-        # File 5: Network default config
-        # ==========================================
+        # Network config
         cat > $KERNEL_DIR/etc/config/network << 'EOF'
         config interface 'loopback'
           option ifname 'lo'
@@ -258,44 +232,33 @@ jobs:
           option ipaddr '127.0.0.1'
           option netmask '255.0.0.0'
         
-        config globals 'globals'
-          option ula_prefix 'fd00::/48'
-        
         config interface 'lan'
           option type 'bridge'
           option ifname 'eth0'
           option proto 'static'
           option ipaddr '192.168.1.1'
           option netmask '255.255.255.0'
-          option ip6assign '60'
         
         config interface 'wan'
           option proto 'qmi'
           option device '/dev/cdc-wdm0'
           option apn 'internet'
           option auth 'none'
-          option iptype 'ipv4'
         EOF
         
         chmod +x $KERNEL_DIR/etc/uci-defaults/*
         chmod +x $KERNEL_DIR/etc/rc.local
-        
-        echo "✅ All configuration files generated!"
+        echo "✅ Configuration files generated!"
 
     # ============================================
-    # STEP 5: Auto-generate msm8916.mk
+    # STEP 5: Generate msm8916.mk
     # ============================================
     - name: 📝 Generate msm8916.mk
       run: |
         cd immortalwrt
-        
         mkdir -p target/linux/msm89xx/image
         
         cat > target/linux/msm89xx/image/msm8916.mk << 'EOF'
-        # SPDX-License-Identifier: GPL-2.0-only
-        #
-        # Copyright (C) 2023-2024 ImmortalWrt.org
-        
         include $(TOPDIR)/rules.mk
         
         DEVICE_VARS += DEVICE_DTS
@@ -338,19 +301,6 @@ jobs:
                              wifischedule kmod-wireguard
         endef
         TARGET_DEVICES += samsung-j5nlte
-        
-        define Device/samsung-j5lte
-          $(Device/Qcom)
-          DEVICE_VENDOR := Samsung
-          DEVICE_MODEL := Galaxy J5 LTE
-          DEVICE_DTS := qcom/msm8916-samsung-j5lte
-          IMAGE_SIZE := 1024m
-          SUPPORTED_DEVICES := samsung-j5lte
-          DEVICE_PACKAGES := kmod-usb-net-qmi-wwan kmod-usb-serial-option \
-                             kmod-usb-serial-qualcomm usbutils modemmanager \
-                             wifischedule kmod-wireguard
-        endef
-        TARGET_DEVICES += samsung-j5lte
         EOF
         
         echo "✅ msm8916.mk generated!"
@@ -378,41 +328,31 @@ jobs:
         APN="${{ github.event.inputs.apn }}"
         BUILD_TYPE="${{ github.event.inputs.build_type }}"
         
-        # Base config
         cat > .config << 'EOF'
-        # Target
         CONFIG_TARGET_msm89xx=y
         CONFIG_TARGET_msm89xx_msm8916=y
         CONFIG_TARGET_msm89xx_msm8916_DEVICE_DEVICE_PLACEHOLDER=y
         
-        # Root filesystem
         CONFIG_TARGET_ROOTFS_EXT4FS=y
         CONFIG_TARGET_ROOTFS_SQUASHFS=y
         CONFIG_TARGET_IMAGES_GZIP=y
-        CONFIG_TARGET_IMAGES_SPI_NAND=y
         
-        # Base system
         CONFIG_PACKAGE_busybox=y
         CONFIG_PACKAGE_dropbear=y
         CONFIG_PACKAGE_firewall=y
         CONFIG_PACKAGE_dnsmasq=y
-        CONFIG_PACKAGE_odhcpd=y
         
-        # LuCI
         CONFIG_PACKAGE_luci=y
         CONFIG_PACKAGE_luci-theme-bootstrap=y
         CONFIG_PACKAGE_luci-app-firewall=y
         CONFIG_PACKAGE_luci-app-opkg=y
-        CONFIG_PACKAGE_luci-app-statistics=y
         
-        # WiFi
         CONFIG_PACKAGE_wireless-tools=y
         CONFIG_PACKAGE_iw=y
         CONFIG_PACKAGE_iwinfo=y
         CONFIG_PACKAGE_wpad-basic=y
         CONFIG_PACKAGE_hostapd=y
         
-        # USB
         CONFIG_PACKAGE_kmod-usb-core=y
         CONFIG_PACKAGE_kmod-usb-net=y
         CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
@@ -421,70 +361,42 @@ jobs:
         CONFIG_PACKAGE_kmod-usb-serial-qualcomm=y
         CONFIG_PACKAGE_usbutils=y
         
-        # Modem
         CONFIG_PACKAGE_modemmanager=y
         CONFIG_PACKAGE_luci-proto-modemmanager=y
         CONFIG_PACKAGE_luci-app-modemmanager=y
         CONFIG_PACKAGE_mobile-broadband-provider-info=y
         
-        # WiFi Schedule
         CONFIG_PACKAGE_wifischedule=y
-        
-        # VPN
         CONFIG_PACKAGE_kmod-wireguard=y
         CONFIG_PACKAGE_wireguard-tools=y
         CONFIG_PACKAGE_luci-app-wireguard=y
         
-        # Filesystem
-        CONFIG_PACKAGE_kmod-fs-ext4=y
-        CONFIG_PACKAGE_e2fsprogs=y
-        
-        # Utilities
         CONFIG_PACKAGE_htop=y
         CONFIG_PACKAGE_nano=y
-        CONFIG_PACKAGE_tcpdump=y
         CONFIG_PACKAGE_curl=y
         CONFIG_PACKAGE_wget=y
-        
-        # Compression
-        CONFIG_PACKAGE_gzip=y
-        CONFIG_PACKAGE_xz-utils=y
-        
         EOF
         
-        # Set device
         sed -i "s/DEVICE_PLACEHOLDER/$DEVICE/g" .config
         
-        # Set WiFi credentials as env vars for uci-defaults
         export WIFI_SSID="$WIFI_SSID"
         export WIFI_PASSWORD="$WIFI_PASSWORD"
         export APN="$APN"
         
-        # Add extra packages
         if [ -n "${{ github.event.inputs.extra_packages }}" ]; then
           for pkg in ${{ github.event.inputs.extra_packages }}; do
             echo "CONFIG_PACKAGE_$pkg=y" >> .config
           done
         fi
         
-        # Build type optimization
         if [ "$BUILD_TYPE" = "minimal" ]; then
           sed -i '/CONFIG_PACKAGE_luci-app-/d' .config
           sed -i '/CONFIG_PACKAGE_htop/d' .config
-          sed -i '/CONFIG_PACKAGE_nano/d' .config
           echo "CONFIG_PACKAGE_luci-light=y" >> .config
-          echo "ℹ️ Minimal build configured"
-        elif [ "$BUILD_TYPE" = "custom" ]; then
-          echo "ℹ️ Custom build - using specified packages only"
         fi
         
-        # Make defconfig
         make defconfig
-        
         echo "✅ .config generated!"
-        echo "📱 Device: $DEVICE"
-        echo "📶 WiFi SSID: $WIFI_SSID"
-        echo "📡 APN: $APN"
 
     # ============================================
     # STEP 8: Download and Build
@@ -498,7 +410,7 @@ jobs:
     - name: 🔨 Build firmware
       run: |
         cd immortalwrt
-        echo "🚀 Starting build... (this will take ~2 hours)"
+        echo "🚀 Starting build... (~2 hours)"
         make -j$(nproc) V=s || make -j1 V=s
         echo "✅ Build completed!"
 
@@ -516,10 +428,9 @@ jobs:
           immortalwrt/bin/targets/msm89xx/msm8916/*.manifest
           immortalwrt/bin/targets/msm89xx/msm8916/*.sha256sums
         retention-days: 7
-        compression: gzip
 
-    - name: 📤 Upload build logs
-      if: always()
+    - name: 📤 Upload build logs (if failed)
+      if: failure()
       uses: actions/upload-artifact@v4
       with:
         name: build-logs-${{ github.run_number }}
@@ -540,7 +451,6 @@ jobs:
         body: |
           ## 📱 ImmortalWrt for Samsung Galaxy J5
           
-          ### ✅ Build Information
           | Item | Value |
           |------|-------|
           | **Device** | `${{ github.event.inputs.device_model }}` |
@@ -548,47 +458,24 @@ jobs:
           | **Build Type** | ${{ github.event.inputs.build_type }} |
           | **WiFi SSID** | `${{ github.event.inputs.wifi_ssid }}` |
           | **APN** | `${{ github.event.inputs.apn }}` |
-          | **Build Date** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |
-          | **Triggered By** | @${{ github.actor }} |
           
           ### 📦 Included Packages
           ```
           ${{ github.event.inputs.extra_packages }}
           ```
           
-          ### ✨ Features
-          - ✅ **WiFi auto-on** at boot with custom SSID
-          - ✅ **4G/LTE Modem** auto-configured
-          - ✅ **WiFi Schedule** (06:00-23:59)
-          - ✅ **WireGuard VPN** ready
-          - ✅ **ModemManager** with QMI support
-          - ✅ **LuCI** web interface
-          
           ### ⚠️ Flashing Instructions
-          1. **Enter EDL mode**: `Volume Down + Home + Power` (while powered off)
-          2. **Backup original partitions** (IMPORTANT!)
-          3. Flash using **QFIL** or **EDL tool**
-          4. Extract modem firmware from original device:
-             - `modem.bin`
-             - `fsc.bin` 
-             - `fsg.bin`
-          5. Flash modem firmware separately
+          1. Enter EDL mode: Volume Down + Home + Power
+          2. Backup original partitions
+          3. Flash using QFIL or EDL tool
+          4. Extract modem firmware: modem.bin, fsc.bin, fsg.bin
           
           ### 🌐 Defaults
-          - **IP Address**: `192.168.1.1`
-          - **WiFi**: `${{ github.event.inputs.wifi_ssid }}` / `${{ github.event.inputs.wifi_password }}`
-          - **APN**: `${{ github.event.inputs.apn }}`
+          - IP: 192.168.1.1
+          - WiFi: ${{ github.event.inputs.wifi_ssid }} / ${{ github.event.inputs.wifi_password }}
+          - APN: ${{ github.event.inputs.apn }}
           
-          ### 📁 Files
-          - `combined.img` - Main firmware image
-          - `rootfs.img` - Root filesystem only
-          - `*.dtb` - Device Tree Blob
-          - `*.sha256sums` - Checksums
-          
-          ---
-          **⚠️ DISCLAIMER**: Use at your own risk. Not responsible for bricked devices.
-          
-          💬 **Support**: Open an issue if you encounter problems.
+          **⚠️ DISCLAIMER**: Use at your own risk.
         files: |
           immortalwrt/bin/targets/msm89xx/msm8916/*.img
           immortalwrt/bin/targets/msm89xx/msm8916/*.bin
@@ -596,28 +483,5 @@ jobs:
           immortalwrt/bin/targets/msm89xx/msm8916/*.sha256sums
         draft: false
         prerelease: true
-        generate_release_notes: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    # ============================================
-    # STEP 11: Summary
-    # ============================================
-    - name: 📊 Build Summary
-      if: always()
-      run: |
-        echo "## 📊 Build Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| **Device** | ${{ github.event.inputs.device_model }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Kernel** | ${{ github.event.inputs.kernel_version }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Build Type** | ${{ github.event.inputs.build_type }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Status** | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Build Time** | $(($(date +%s)-$(git log -1 --format=%ct))) seconds |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Artifacts** | [Download](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📁 Firmware Files" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        ls -lh immortalwrt/bin/targets/msm89xx/msm8916/*.img 2>/dev/null || echo "No img files" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
