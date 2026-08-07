@@ -67,20 +67,26 @@ jobs:
         sudo ln -sf /usr/bin/python3 /usr/bin/python
         echo "✅ Build environment ready!"
 
-    - name: 💾 Add swap space
+    - name: 💾 Check and add swap space (if needed)
       run: |
-        echo "📊 Memory sebelum swap:"
+        echo "📊 Memory saat ini:"
         free -h
         echo ""
-        echo "📦 Creating 4GB swap file..."
-        sudo fallocate -l 4G /swapfile
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
+        
+        if swapon --show | grep -q "/swapfile"; then
+          echo "✅ Swap file sudah ada, skip pembuatan."
+        else
+          echo "📦 Creating 4GB swap file..."
+          sudo fallocate -l 4G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "✅ Swap added successfully!"
+        fi
+        
         echo ""
         echo "📊 Memory setelah swap:"
         free -h
-        echo "✅ Swap added successfully!"
 
     - name: 🧹 Clean workspace
       run: |
