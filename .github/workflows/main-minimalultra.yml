@@ -28,7 +28,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 180  # 3 jam (cukup untuk minimal)
+    timeout-minutes: 180
     permissions:
       contents: write
       packages: write
@@ -64,9 +64,7 @@ jobs:
           perl \
           libelf-dev
         
-        # Fix python
         sudo ln -sf /usr/bin/python3 /usr/bin/python
-        
         echo "✅ Build environment ready!"
 
     - name: 🧹 Clean workspace
@@ -114,7 +112,6 @@ jobs:
         KERNEL_DIR="target/linux/msm89xx/files-6.6"
         mkdir -p $KERNEL_DIR/etc/uci-defaults
         
-        # WiFi auto-on (sederhana)
         cat > $KERNEL_DIR/etc/uci-defaults/99-wifi-auto << 'EOF'
         #!/bin/sh
         sleep 3
@@ -131,7 +128,6 @@ jobs:
         fi
         EOF
         
-        # Modem auto-setup
         cat > $KERNEL_DIR/etc/uci-defaults/99-modem-auto << 'EOF'
         #!/bin/sh
         APN="${APN:-internet}"
@@ -198,48 +194,29 @@ jobs:
         WIFI_PASSWORD="${{ github.event.inputs.wifi_password }}"
         APN="${{ github.event.inputs.apn }}"
         
-        # ULTRA MINIMAL CONFIG - Hanya yang paling penting!
         cat > .config << 'EOF'
-        # ============================================
-        # TARGET: Qualcomm MSM8916
-        # ============================================
         CONFIG_TARGET_msm89xx=y
         CONFIG_TARGET_msm89xx_msm8916=y
         CONFIG_TARGET_msm89xx_msm8916_DEVICE_samsung-j5=y
         
-        # ============================================
-        # ROOT FILESYSTEM (paling kecil)
-        # ============================================
         CONFIG_TARGET_ROOTFS_SQUASHFS=y
         CONFIG_TARGET_IMAGES_GZIP=y
         
-        # ============================================
-        # BASE SYSTEM (minimal)
-        # ============================================
         CONFIG_PACKAGE_busybox=y
         CONFIG_PACKAGE_dropbear=y
         CONFIG_PACKAGE_firewall=y
         CONFIG_PACKAGE_dnsmasq=y
         
-        # ============================================
-        # LUCI (LIGHT - antarmuka web minimal)
-        # ============================================
         CONFIG_PACKAGE_luci-light=y
-_P        CONFIG_PACKAGE_luci-theme-bootstrap=y
+        CONFIG_PACKAGE_luci-theme-bootstrap=y
         CONFIG_PACKAGE_luci-app-firewall=y
         
-        # ============================================
-        # WIFI (minimal)
-        # ============================================
         CONFIG_PACKAGE_iw=y
-        CONFIGACKAGE_iwinfo=y
+        CONFIG_PACKAGE_iwinfo=y
         CONFIG_PACKAGE_wpad-basic=y
         CONFIG_PACKAGE_hostapd=y
         CONFIG_PACKAGE_wireless-tools=y
         
-        # ============================================
-        # MODEM 4G (hanya yang diperlukan)
-        # ============================================
         CONFIG_PACKAGE_kmod-usb-core=y
         CONFIG_PACKAGE_kmod-usb-net=y
         CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
@@ -250,32 +227,15 @@ _P        CONFIG_PACKAGE_luci-theme-bootstrap=y
         CONFIG_PACKAGE_modemmanager=y
         CONFIG_PACKAGE_luci-proto-modemmanager=y
         
-        # ============================================
-        # TOOLS (hanya yang paling dasar)
-        # ============================================
         CONFIG_PACKAGE_curl=y
         CONFIG_PACKAGE_wget=y
         
-        # ============================================
-        # OPTIMASI UKURAN
-        # ============================================
         CONFIG_PACKAGE_busybox-config-mdev=y
         CONFIG_BUSYBOX_DEFAULT_FEATURE_EXTRA_QUIET=y
         CONFIG_BUSYBOX_DEFAULT_FEATURE_SYSLOG=y
         CONFIG_TARGET_OPTIMIZATION="-Os -pipe -fno-caller-saves -fno-plt -fhonour-copts -Wno-error=unused-but-set-variable -Wno-error=unused-result"
         CONFIG_STRIP_KERNEL_EXPORTS=y
         CONFIG_USE_SSTRIP=y
-        
-        # TIDAK ADA:
-        # - VPN (WireGuard)
-        # - WiFi Schedule
-        # - Bluetooth
-        # - Audio
-        # - USB Storage
-        # - LuCI apps (openclash, adguard, dll)
-        # - htop, nano, tcpdump
-        # - Samba
-        # - Docker
         EOF
         
         export WIFI_SSID="$WIFI_SSID"
@@ -320,59 +280,54 @@ _P        CONFIG_PACKAGE_luci-theme-bootstrap=y
           immortalwrt/.config
         retention-days: 7
 
-    - name: 🚀 Create Release
+    - name: 🚀 Create GitHub Release
       if: success()
       uses: softprops/action-gh-release@v1
       with:
         tag_name: j5-minimal-${{ github.run_number }}
         name: 📦 ImmortalWrt J5 - ULTRA MINIMAL #${{ github.run_number }}
         body: |
-          ## 📱 ImmortalWrt for Samsung J5 - ULTRA MINIMAL
+          📱 ImmortalWrt for Samsung J5 - ULTRA MINIMAL
           
-          ### 📊 Build Info
-          | Item | Value |
-          |------|-------|
-          | **Device** | `${{ github.event.inputs.device_model }}` |
-          | **WiFi SSID** | `${{ github.event.inputs.wifi_ssid }}` |
-          | **APN** | `${{ github.event.inputs.apn }}` |
+          📊 Build Info:
+          Device: ${{ github.event.inputs.device_model }}
+          WiFi SSID: ${{ github.event.inputs.wifi_ssid }}
+          APN: ${{ github.event.inputs.apn }}
           
-          ### 📦 Included Packages (ONLY ESSENTIALS!)
-          - ✅ Linux Kernel + Device Tree
-          - ✅ BusyBox (core utilities)
-          - ✅ Dropbear (SSH server)
-          - ✅ Firewall + DNS
-          - ✅ LuCI Light (web UI minimal)
-          - ✅ WiFi (hostapd + wpad-basic)
-          - ✅ Modem 4G (ModemManager + QMI)
-          - ✅ curl + wget
+          📦 Included Packages (ONLY ESSENTIALS!):
+          - Linux Kernel + Device Tree
+          - BusyBox (core utilities)
+          - Dropbear (SSH server)
+          - Firewall + DNS
+          - LuCI Light (web UI minimal)
+          - WiFi (hostapd + wpad-basic)
+          - Modem 4G (ModemManager + QMI)
+          - curl + wget
           
-          ### ❌ NOT INCLUDED (untuk menghemat ukuran)
-          - ❌ WireGuard VPN
-          - ❌ WiFi Schedule
-          - ❌ Bluetooth
-          - ❌ Audio
-          - ❌ USB Storage
-          - ❌ LuCI Apps (openclash, adguard, dll)
-          - ❌ htop, nano, tcpdump
-          - ❌ Samba, Docker
+          ❌ NOT INCLUDED:
+          - WireGuard VPN
+          - WiFi Schedule
+          - Bluetooth
+          - Audio
+          - USB Storage
+          - LuCI Apps
+          - htop, nano, tcpdump
+          - Samba, Docker
           
-          ### 📁 File Size
-          - `combined.img`: ~10-12 MB (super kecil!)
-          - `rootfs.img`: ~6-8 MB
+          📁 File Size: ~10-12 MB
           
-          ### ⚠️ Flashing Instructions
-          1. Enter EDL mode: Volume Down + Home + Power
-          2. Backup original partitions
-          3. Flash using QFIL or EDL tool
-          4. Extract modem firmware: modem.bin, fsc.bin, fsg.bin
+          ⚠️ Flashing:
+          1. Enter EDL mode
+          2. Backup partitions
+          3. Flash using QFIL/EDL
+          4. Extract modem firmware
           
-          ### 🌐 Defaults
+          🌐 Defaults:
           - IP: 192.168.1.1
-          - WiFi: `${{ github.event.inputs.wifi_ssid }}` / `${{ github.event.inputs.wifi_password }}`
-          - APN: `${{ github.event.inputs.apn }}`
+          - WiFi: ${{ github.event.inputs.wifi_ssid }} / ${{ github.event.inputs.wifi_password }}
+          - APN: ${{ github.event.inputs.apn }}
           
-          ---
-          **⚠️ DISCLAIMER**: Use at your own risk.
+          ⚠️ Use at your own risk.
         files: |
           immortalwrt/bin/targets/msm89xx/msm8916/*.img
           immortalwrt/bin/targets/msm89xx/msm8916/*.bin
