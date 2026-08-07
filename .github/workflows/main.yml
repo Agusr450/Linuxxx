@@ -58,7 +58,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 360  # ✅ Diperpanjang dari 240 ke 360 menit (6 jam)
     permissions:
       contents: write
       packages: write
@@ -126,7 +126,7 @@ jobs:
       uses: actions/checkout@v4
 
     # ============================================
-    # STEP 2: Clone ImmortalWrt (FIXED)
+    # STEP 2: Clone ImmortalWrt
     # ============================================
     - name: 📦 Clone ImmortalWrt source
       run: |
@@ -144,7 +144,23 @@ jobs:
         echo "IMMORTALWRT_BRANCH=$(git branch --show-current)" >> $GITHUB_ENV
 
     # ============================================
-    # STEP 3: Auto-generate DTS files
+    # STEP 3: Cache build artifacts (✅ DITAMBAHKAN)
+    # ============================================
+    - name: 💾 Cache build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          immortalwrt/dl
+          immortalwrt/build_dir
+          immortalwrt/staging_dir
+          immortalwrt/tmp
+        key: ${{ runner.os }}-immortalwrt-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-immortalwrt-
+          ${{ runner.os }}-immortalwrt-${{ github.event.inputs.immortalwrt_branch }}
+
+    # ============================================
+    # STEP 4: Auto-generate DTS files
     # ============================================
     - name: 📄 Auto-generate Device Tree files
       run: |
@@ -167,7 +183,7 @@ jobs:
         echo "✅ DTS files downloaded!"
 
     # ============================================
-    # STEP 4: Generate configuration files
+    # STEP 5: Generate configuration files
     # ============================================
     - name: ⚙️ Generate configuration files
       run: |
@@ -264,7 +280,7 @@ jobs:
         echo "✅ Configuration files generated!"
 
     # ============================================
-    # STEP 5: Generate msm8916.mk
+    # STEP 6: Generate msm8916.mk
     # ============================================
     - name: 📝 Generate msm8916.mk
       run: |
@@ -319,7 +335,7 @@ jobs:
         echo "✅ msm8916.mk generated!"
 
     # ============================================
-    # STEP 6: Update feeds
+    # STEP 7: Update feeds
     # ============================================
     - name: 🔄 Update feeds
       run: |
@@ -329,7 +345,7 @@ jobs:
         echo "✅ Feeds updated!"
 
     # ============================================
-    # STEP 7: Generate .config
+    # STEP 8: Generate .config
     # ============================================
     - name: ⚙️ Generate .config
       run: |
@@ -412,7 +428,7 @@ jobs:
         echo "✅ .config generated!"
 
     # ============================================
-    # STEP 8: Download and Build
+    # STEP 9: Download and Build
     # ============================================
     - name: 📥 Download package sources
       run: |
@@ -423,14 +439,16 @@ jobs:
     - name: 🔨 Build firmware
       run: |
         cd immortalwrt
-        echo "🚀 Starting build... (~2 hours)"
+        echo "🚀 Starting build... (~2-3 hours)"
+        echo "⏰ Timeout: 360 minutes (6 hours)"
         make -j$(nproc) V=s || make -j1 V=s
         echo "✅ Build completed!"
 
     # ============================================
-    # STEP 9: Upload artifacts
+    # STEP 10: Upload artifacts
     # ============================================
     - name: 📤 Upload firmware artifacts
+      if: success() || failure()
       uses: actions/upload-artifact@v4
       with:
         name: immortalwrt-j5-${{ github.run_number }}
@@ -440,6 +458,7 @@ jobs:
           immortalwrt/bin/targets/msm89xx/msm8916/*.dtb
           immortalwrt/bin/targets/msm89xx/msm8916/*.manifest
           immortalwrt/bin/targets/msm89xx/msm8916/*.sha256sums
+          immortalwrt/.config
         retention-days: 7
 
     - name: 📤 Upload build logs (if failed)
@@ -450,10 +469,10 @@ jobs:
         path: |
           immortalwrt/logs/
           immortalwrt/.config
-        retention-days: 3
+        retention-days: 7
 
     # ============================================
-    # STEP 10: Create Release
+    # STEP 11: Create Release
     # ============================================
     - name: 🚀 Create GitHub Release
       if: success()
@@ -478,9 +497,17 @@ jobs:
           ${{ github.event.inputs.extra_packages }}
           ```
           
+          ### ✨ Features
+          - ✅ WiFi auto-on at boot
+          - ✅ 4G/LTE Modem auto-configured
+          - ✅ WiFi Schedule (06:00-23:59)
+          - ✅ WireGuard VPN ready
+          - ✅ ModemManager with QMI support
+          - ✅ LuCI web interface
+          
           ### ⚠️ Flashing Instructions
           1. Enter EDL mode: Volume Down + Home + Power
-          2. Backup original partitions
+          2. Backup original partitions (IMPORTANT!)
           3. Flash using QFIL or EDL tool
           4. Extract modem firmware: modem.bin, fsc.bin, fsg.bin
           
@@ -489,7 +516,10 @@ jobs:
           - WiFi: ${{ github.event.inputs.wifi_ssid }} / ${{ github.event.inputs.wifi_password }}
           - APN: ${{ github.event.inputs.apn }}
           
-          **⚠️ DISCLAIMER**: Use at your own risk.
+          ---
+          **⚠️ DISCLAIMER**: Use at your own risk. Not responsible for bricked devices.
+          
+          💬 **Support**: Open an issue if you encounter problems.
         files: |
           immortalwrt/bin/targets/msm89xx/msm8916/*.img
           immortalwrt/bin/targets/msm89xx/msm8916/*.bin
