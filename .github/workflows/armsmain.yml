@@ -123,13 +123,11 @@ jobs:
       run: |
         cd immortalwrt
         
-        # Buat direktori DTS untuk ARM64
         KERNEL_DTS_DIR="target/linux/generic/files-6.6/arch/arm64/boot/dts/qcom"
         mkdir -p $KERNEL_DTS_DIR
         
         echo "📥 Downloading DTS files for Samsung J5..."
         
-        # Download DTS dari kernel mainline
         curl -s -o $KERNEL_DTS_DIR/msm8916-samsung-j5-common.dtsi \
           https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5-common.dtsi
         
@@ -139,18 +137,14 @@ jobs:
         curl -s -o $KERNEL_DTS_DIR/msm8916-samsung-j5nlte.dts \
           https://raw.githubusercontent.com/torvalds/linux/master/arch/arm64/boot/dts/qcom/msm8916-samsung-j5nlte.dts || echo "J5NLTE DTS not found"
         
-        # Verifikasi
         echo "✅ DTS files downloaded:"
         ls -la $KERNEL_DTS_DIR/
 
     - name: ⚙️ Generate uci-defaults scripts
       run: |
         cd immortalwrt
-        
-        # Buat direktori untuk uci-defaults
         mkdir -p files/etc/uci-defaults
         
-        # WiFi auto-enable
         cat > files/etc/uci-defaults/99-wifi-auto << 'EOF'
         #!/bin/sh
         sleep 3
@@ -178,15 +172,12 @@ jobs:
         fi
         EOF
         
-        # Modem auto-setup
         cat > files/etc/uci-defaults/99-modem-auto << 'EOF'
         #!/bin/sh
         APN="${APN:-internet}"
         
-        # Enable ModemManager
         uci set modemmanager.@modemmanager[0].enable='1' 2>/dev/null || true
         
-        # Setup QMI interface
         uci set network.wan=interface
         uci set network.wan.proto='qmi'
         uci set network.wan.device='/dev/cdc-wdm0'
@@ -204,19 +195,16 @@ jobs:
         echo "✅ Modem configured with APN: $APN"
         EOF
         
-        # rc.local (fallback)
         cat > files/etc/rc.local << 'EOF'
         #!/bin/sh -e
         sleep 15
         
-        # Force WiFi up if not running
         if ! pgrep hostapd >/dev/null; then
           echo "🔄 WiFi not running, restarting..."
           /etc/init.d/wireless restart
           sleep 3
         fi
         
-        # Force modem detection
         if [ ! -e /dev/cdc-wdm0 ]; then
           echo "🔄 Modem not detected, resetting USB..."
           echo 1 > /sys/bus/usb/devices/1-1/remove 2>/dev/null || true
@@ -236,11 +224,8 @@ jobs:
     - name: 📝 Generate msm8916.mk for ARM64
       run: |
         cd immortalwrt
-        
-        # Buat direktori image
         mkdir -p target/linux/generic/image
         
-        # Buat file definisi perangkat
         cat > target/linux/generic/image/msm8916.mk << 'EOF'
         include $(TOPDIR)/rules.mk
         
@@ -287,7 +272,7 @@ jobs:
         TARGET_DEVICES += samsung-j5nlte
         EOF
         
-        echo "✅ msm8916.mk generated for ARM64 with dnsmasq-full!"
+        echo "✅ msm8916.mk generated!"
 
     - name: 🔄 Update feeds
       run: |
@@ -306,55 +291,41 @@ jobs:
         DEVICE="${{ github.event.inputs.device_model }}"
         
         cat > .config << 'EOF'
-        # ============================================================
-        # TARGET: ARM64 / aarch64 untuk Samsung J5 (MSM8916)
-        # ============================================================
-        
         CONFIG_TARGET_arm64=y
         CONFIG_TARGET_arm64_generic=y
         CONFIG_TARGET_arm64_generic_DEVICE_DEVICE_PLACEHOLDER=y
         
-        # Subtarget untuk Qualcomm MSM89xx
         CONFIG_TARGET_arm64_generic_SUBTARGET_msm89xx=y
         
-        # Root filesystem
         CONFIG_TARGET_ROOTFS_SQUASHFS=y
         CONFIG_TARGET_IMAGES_GZIP=y
         CONFIG_TARGET_IMAGES_ITB=y
         
-        # Kernel
         CONFIG_KERNEL_DEVICETREE=y
         CONFIG_KERNEL_DTBS="qcom/msm8916-samsung-j5.dtb"
         CONFIG_KERNEL_FIT_IMAGE=y
         CONFIG_KERNEL_FIT_SIGNATURE=n
         
-        # Optimasi ukuran
         CONFIG_TARGET_OPTIMIZATION="-Os -pipe -fno-caller-saves -fno-plt -fhonour-copts -Wno-error=unused-but-set-variable -Wno-error=unused-result"
         CONFIG_STRIP_KERNEL_EXPORTS=y
         CONFIG_USE_SSTRIP=y
         CONFIG_STRIP_ALL=y
         
-        # ============================================================
-        # BASE SYSTEM - DENGAN DNSMASQ-FULL
-        # ============================================================
+        # Base System - dengan dnsmasq-full
         CONFIG_PACKAGE_busybox=y
         CONFIG_PACKAGE_busybox-config-mdev=y
         CONFIG_PACKAGE_dropbear=y
         CONFIG_PACKAGE_firewall=y
         CONFIG_PACKAGE_dnsmasq-full=y
-        # CONFIG_PACKAGE_dnsmasq is not set (HAPUS agar tidak conflict)
+        # CONFIG_PACKAGE_dnsmasq is not set
         
-        # ============================================================
-        # LUCI - LIGHT
-        # ============================================================
+        # LuCI
         CONFIG_PACKAGE_luci-light=y
         CONFIG_PACKAGE_luci-theme-bootstrap=y
         CONFIG_PACKAGE_luci-app-firewall=y
         CONFIG_PACKAGE_luci-app-opkg=y
         
-        # ============================================================
-        # WIFI
-        # ============================================================
+        # WiFi
         CONFIG_PACKAGE_iw=y
         CONFIG_PACKAGE_iwinfo=y
         CONFIG_PACKAGE_wpad-basic=y
@@ -362,9 +333,7 @@ jobs:
         CONFIG_PACKAGE_wireless-tools=y
         CONFIG_PACKAGE_wpa-supplicant=y
         
-        # ============================================================
-        # USB + MODEM 4G
-        # ============================================================
+        # USB + Modem 4G
         CONFIG_PACKAGE_kmod-usb-core=y
         CONFIG_PACKAGE_kmod-usb-net=y
         CONFIG_PACKAGE_kmod-usb-net-qmi-wwan=y
@@ -375,8 +344,6 @@ jobs:
         CONFIG_PACKAGE_kmod-usb-serial-qualcomm=y
         CONFIG_PACKAGE_kmod-usb-serial-wwan=y
         CONFIG_PACKAGE_usbutils=y
-        
-        # Qualcomm USB PHY
         CONFIG_PACKAGE_kmod-usb-phy-qcom-msm=y
         
         # ModemManager
@@ -389,22 +356,16 @@ jobs:
         CONFIG_PACKAGE_umbim=y
         CONFIG_PACKAGE_uqmi=y
         
-        # ============================================================
-        # TOOLS
-        # ============================================================
+        # Tools
         CONFIG_PACKAGE_curl=y
         CONFIG_PACKAGE_wget=y
         CONFIG_PACKAGE_ip-full=y
         
-        # ============================================================
-        # BUSYBOX
-        # ============================================================
+        # BusyBox
         CONFIG_BUSYBOX_DEFAULT_FEATURE_EXTRA_QUIET=y
         CONFIG_BUSYBOX_DEFAULT_FEATURE_SYSLOG=y
         
-        # ============================================================
-        # TIDAK TERMASUK (untuk menghemat ukuran)
-        # ============================================================
+        # Tidak termasuk
         # CONFIG_PACKAGE_kmod-wireguard is not set
         # CONFIG_PACKAGE_wifischedule is not set
         # CONFIG_PACKAGE_htop is not set
@@ -412,7 +373,6 @@ jobs:
         # CONFIG_PACKAGE_tcpdump is not set
         EOF
         
-        # Ganti placeholder dengan device yang dipilih
         sed -i "s/DEVICE_PLACEHOLDER/$DEVICE/g" .config
         
         export WIFI_SSID="$WIFI_SSID"
@@ -423,7 +383,6 @@ jobs:
         
         echo ""
         echo "📋 VERIFIKASI TARGET:"
-        echo "====================="
         grep "CONFIG_TARGET" .config | grep -v "is not set" || true
         echo ""
         echo "📋 VERIFIKASI DNSMASQ:"
@@ -454,28 +413,16 @@ jobs:
         cd immortalwrt
         
         echo ""
-        echo "📂 1. Cari semua file .img, .bin, .dtb, .itb:"
+        echo "📂 1. Cari semua file:"
         find bin/targets/ -name "*.img" -o -name "*.bin" -o -name "*.dtb" -o -name "*.itb" 2>/dev/null || echo "Tidak ada file ditemukan"
         
         echo ""
-        echo "📂 2. Cek struktur direktori bin/targets/:"
-        ls -la bin/targets/ 2>/dev/null || echo "Folder bin/targets/ tidak ditemukan"
+        echo "📂 2. Cek folder arm64/generic:"
+        ls -la bin/targets/arm64/generic/ 2>/dev/null || echo "Folder tidak ditemukan"
         
         echo ""
-        echo "📂 3. Cek folder arm64:"
-        ls -la bin/targets/arm64/ 2>/dev/null || echo "Folder arm64 tidak ditemukan"
-        
-        echo ""
-        echo "📂 4. Cek folder arm64/generic:"
-        ls -la bin/targets/arm64/generic/ 2>/dev/null || echo "Folder generic tidak ditemukan"
-        
-        echo ""
-        echo "📂 5. Cek folder arm64/generic/msm89xx:"
-        ls -la bin/targets/arm64/generic/msm89xx/ 2>/dev/null || echo "Folder msm89xx tidak ditemukan"
-        
-        echo ""
-        echo "📂 6. Cari folder msm89xx di mana saja:"
-        find bin/targets/ -type d -name "*msm89xx*" 2>/dev/null || echo "Tidak ditemukan"
+        echo "📂 3. Cek folder arm64/generic/msm89xx:"
+        ls -la bin/targets/arm64/generic/msm89xx/ 2>/dev/null || echo "Folder tidak ditemukan"
         
         echo ""
         echo "=========================================="
@@ -493,7 +440,6 @@ jobs:
           immortalwrt/bin/targets/arm64/generic/*.manifest
           immortalwrt/.config
         retention-days: 7
-        compression: gzip
 
     - name: 📤 Upload logs (if failed)
       if: failure()
@@ -521,28 +467,25 @@ jobs:
           | **Device** | `${{ github.event.inputs.device_model }}` |
           | **Architecture** | ARM64 / aarch64 |
           | **Bootloader** | Compatible with lk2nd |
-          | **DNS** | dnsmasq-full (fitur lengkap) |
+          | **DNS** | dnsmasq-full |
           | **WiFi SSID** | `${{ github.event.inputs.wifi_ssid }}` |
           | **APN** | `${{ github.event.inputs.apn }}` |
-          | **Build Date** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |
           
-          ### 📦 Included Packages
-          - ✅ Linux Kernel + Device Tree
-          - ✅ BusyBox (core utilities)
-          - ✅ Dropbear (SSH server)
-          - ✅ Firewall + **dnsmasq-full** (DNS + DHCP lengkap)
-          - ✅ LuCI Light (web UI minimal)
+          ### 📦 Included
+          - ✅ Kernel + DTS
+          - ✅ BusyBox, Dropbear, Firewall
+          - ✅ dnsmasq-full (DNS + DHCP lengkap)
+          - ✅ LuCI Light
           - ✅ WiFi (hostapd + wpad-basic)
           - ✅ Modem 4G (ModemManager + QMI)
           - ✅ curl + wget + ip-full
           
-          ### ❌ NOT INCLUDED (Ultra Minimal)
+          ### ❌ NOT INCLUDED
           - WireGuard VPN
           - WiFi Schedule
-          - Bluetooth
-          - Audio
+          - Bluetooth, Audio
           - USB Storage
-          - LuCI Apps (openclash, adguardhome, dll)
+          - LuCI Apps
           - htop, nano, tcpdump
           
           ### 📁 File Types
@@ -551,10 +494,10 @@ jobs:
           - `*.dtb` - Device Tree Blob
           
           ### ⚠️ Flashing with lk2nd
-          1. Enter EDL mode or fastboot
-          2. Flash boot image: `fastboot flash boot openwrt-*.itb`
-          3. Flash rootfs: `fastboot flash rootfs openwrt-*.img`
-          4. Reboot: `fastboot reboot`
+          1. Enter fastboot mode
+          2. `fastboot flash boot openwrt-*.itb`
+          3. `fastboot flash rootfs openwrt-*.img`
+          4. `fastboot reboot`
           
           ### 🌐 Defaults
           - IP: 192.168.1.1
@@ -562,7 +505,7 @@ jobs:
           - APN: `${{ github.event.inputs.apn }}`
           
           ---
-          **⚠️ DISCLAIMER**: Use at your own risk. Not responsible for bricked devices.
+          **⚠️ DISCLAIMER**: Use at your own risk.
         files: |
           immortalwrt/bin/targets/arm64/generic/*.img
           immortalwrt/bin/targets/arm64/generic/*.itb
